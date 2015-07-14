@@ -1181,11 +1181,23 @@
             }
         });
 
+        function fixCompoundDetection(transaction, meta, value) {
+            var result = false;
+            if(!meta.compound && Object.prototype.toString.call(value) === '[object Array]') {
+                meta.compound = true;
+                setMeta(transaction.db, transaction, meta);
+                result = true;
+            }
+
+            return result;
+        }
+
         IDBObjectStore.prototype.put = override(IDBObjectStore.prototype.put, function (origFunc) {
             return function (value, key) {
                 var meta = this.transaction.db._iegapmeta.stores[this.name];
                 if (!meta) return origFunc.apply(this, arguments);
                 var putReq;
+                fixCompoundDetection(this.transaction, meta, value);
                 if (meta.compound) {
                     // Compound primary key
                     // Key must not be provided when having inbound keys (compound is inbound)

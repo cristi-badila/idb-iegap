@@ -2,7 +2,7 @@
 ///<reference path="../bower_components/dexie/dist/latest/Dexie.js" />
 
 (function () {
-
+    Dexie.delete('iegap-unit-test-database'); //clear the database so as to not have stale data
     var db = new Dexie("iegap-unit-test-database");
     db.version(1).stores({
         users: '[customer+userid],userid,[customer+displayName],*&email'
@@ -31,6 +31,16 @@
         db.users.where("[customer+displayName]").equals(["awarica","David"]).first(function (user) {
             ok(!!user, "User found");
             equal(user.userid, "dfahlander", "User correct");
+        }).catch(function (err) {
+            ok(false, err);
+        }).finally(start);
+    });
+
+    asyncTest('compound-key range', function() {
+        var range = IDBKeyRange.bound(['awarica'],  ['awarica', 'David'], false, false);
+        db.users.get(range, function(users) {
+            ok(!!users, "Users found");
+            equal(users.userid, "dfahlander", "User correct");
         }).catch(function (err) {
             ok(false, err);
         }).finally(start);

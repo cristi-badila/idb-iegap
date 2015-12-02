@@ -242,6 +242,8 @@
         }
     }
 
+    //This product includes software developed by
+    //Kyaw Tun <kyawtun@yathit.com> for https://github.com/yathit/ydn-db licenced under the Apache Licence 2.0
     var YDNEncoder = (function() {
         var p16 = 0x10000;
         var p32 = 0x100000000;
@@ -615,11 +617,25 @@
         /// <returns value="{stores: {storeName: {metaStores: [], indexes: {indexName: {name:'',keyPath:null,multiEntry:false,unique:false,compound:false,idxStoreName:'',storeName:''}}, compound: false, keyPath: ['a','b.c']}}}"></returns>
         return db._iegapmeta;
     }
+
     function setMeta(db, transaction, value) {
         /// <param name="db" type="IDBDatabase"></param>
         /// <param name="transaction" type="IDBTransaction"></param>
         db._iegapmeta = value;
         transaction.objectStore('$iegapmeta').put(value, 1);
+    }
+
+    function refreshMeta(db, transaction, onError, onSuccess) {
+        try {
+            var req = transaction.objectStore("$iegapmeta").get(1);
+            req.onerror = onError;
+            req.onsuccess = function() {
+                db._iegapmeta = req.result;
+                onSuccess();
+            }
+        } catch (e) {
+            onError(undefined, e);
+        }
     }
 
     function parseKeyParam(key) {
@@ -906,28 +922,28 @@
                         var db = (iegReq.result = req.result);
                         db._upgradeTransaction = req.transaction; // Needed in IDBDatabase.prototype.deleteObjectStore(). Save to set like this because during upgrade transaction, no other transactions may live concurrently.
                         db._iegapmeta = { stores: {} };
+                        ev.target = ev.currentTarget = iegReq;
                         if (!getObjectStoreNames.apply(db).contains("$iegapmeta")) {
                             var store = createObjectStore.call(db, "$iegapmeta");
                             store.add(db._iegapmeta, 1);
+                            iegReq.dispatchEvent(ev);
+                        } else {
+                            refreshMeta(db, iegReq.transaction, function(event, exception) {
+                                error(event || ev, exception);
+                            }, function() {
+                                iegReq.dispatchEvent(ev);
+                            });
                         }
-                        ev.target = ev.currentTarget = iegReq;
-                        iegReq.dispatchEvent(ev);
-                    }
+                    };
                     req.onsuccess = function(ev) {
                         var db = req.result;
                         delete db._upgradeTransaction;
                         db._iegapmeta = { stores: {} }; // Until we have loaded the correct value, we need db.transaction() to work.
-                        try {
-                            var trans = db.transaction(["$iegapmeta"], 'readonly');
-                            var req2 = trans.objectStore("$iegapmeta").get(1);
-                            req2.onerror = error;
-                            req2.onsuccess = function() {
-                                db._iegapmeta = req2.result;
-                                success(ev, db);
-                            }
-                        } catch (e) {
-                            error(ev, e);
-                        }
+                        refreshMeta(db, db.transaction(["$iegapmeta"], 'readonly'), function(event, exception) {
+                            error(event || ev, exception);
+                        }, function() {
+                            success(ev, db);
+                        });
                     }
                 });
             }
@@ -1096,7 +1112,7 @@
                     origFunc.apply(this, arguments);
             };
         });
-        
+
         IDBObjectStore.prototype.add = override(IDBObjectStore.prototype.add, function (origFunc) {
             return function(value, key) {
                 var meta = this.transaction.db._iegapmeta.stores[this.name];
@@ -1251,10 +1267,7 @@
             return function (key) {
                 var meta = this.transaction.db._iegapmeta.stores[this.name];
                 if (!meta) return origFunc.apply(this, arguments);
-                if (meta.compound) {
-                    // Compound primary key
-                    key = compoundToString(key);
-                }
+                key = parseKeyParam(key);
                 var delReq = origFunc.call(this, key);
                 var indexes = Object.keys(meta.indexes);
                 if (indexes.length == 0) return delReq;

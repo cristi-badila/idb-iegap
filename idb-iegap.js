@@ -1,4 +1,5 @@
-﻿if (navigator.userAgent.indexOf("Trident/") !== -1) (function (idb, undefined) {
+﻿if (navigator.userAgent.indexOf("Trident/") !== -1 ||
+	  navigator.userAgent.indexOf("Edge/") !== -1) (function (idb, undefined) {
     /* IndexedDB IE Gap polyfill (idb-iegap.js)
      *
      * VERSION: $Format:%d$
